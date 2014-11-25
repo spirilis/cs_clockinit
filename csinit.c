@@ -180,6 +180,7 @@ static unsigned int conv_div_rev(unsigned int div)
 }
 
 #if defined(__MSP430FR2XX_4XX_FAMILY__)
+#define SELMS__DCOCLK SELMS__DCOCLKDIV
 void cs_clockinit(uint32_t freq, int use_xt1)
 {
 	unsigned int waits;
@@ -187,12 +188,15 @@ void cs_clockinit(uint32_t freq, int use_xt1)
 
 	SFRIE1 &= ~OFIE;
 
-	if (use_xt1)
+	if (use_xt1) {
 		CSCTL3 = SELREF__XT1CLK;
 		CSCTL4 = SELA__XT1CLK | SELMS__DCOCLK;
-	else
+	} else {
 		CSCTL3 = SELREF__REFOCLK;
 		CSCTL4 = SELA__REFOCLK | SELMS__DCOCLK;
+		CSCTL6 |= XT1AUTOOFF;
+		CSCTL7 &= ~XT1OFFG;
+	}
 
 	if (!_did_clockdiv) {
 		CSCTL5 = DIVM__1 | DIVS__1;
@@ -219,9 +223,9 @@ void cs_clockinit(uint32_t freq, int use_xt1)
 			CSCTL6 |= XT1DRIVE_3;
 		}
 		do {
-			CSCTL7 &= ~XT1OFFG;
+			CSCTL7 &= ~(XT1OFFG | DCOFFG);
 			SFRIFG1 &= ~OFIFG;
-		} while (SFRIFG1 & OFIFG);
+		} while (CSCTL7 & XT1OFFG);
 	}
 
 	// Set our DCO frequency
@@ -251,9 +255,14 @@ void cs_clockinit(uint32_t freq, int use_xt1)
 			CSCTL2 = FLLD__1 | 487; // ~15990784Hz
 			break;
 	}
+
+	do {
+		CSCTL7 &= ~DCOFFG;
+		SFRIFG1 &= ~OFIFG;
+	} while (SFRIFG1 & OFIFG);
 }
 
-void fr24_cs_clockdiv(unsigned int mclk_div, unsigned int smclk_div, unsigned int aclk_div)
+void cs_clockdiv(unsigned int mclk_div, unsigned int smclk_div, unsigned int aclk_div)
 {
 	CSCTL5 = (CSCTL5 & 0xFF00) | conv_div(mclk_div) | (conv_div(smclk_div / mclk_div) << 4);
 	CSCTL6 = (CSCTL6 & 0x00FF) | (conv_div_16(aclk_div) << 8);
